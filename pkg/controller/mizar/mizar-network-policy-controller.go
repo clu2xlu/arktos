@@ -17,15 +17,15 @@ import (
 	"fmt"
 	"time"
 
-	v1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
-	coreinformers "k8s.io/client-go/informers/core/v1"
+	coreinformers "k8s.io/client-go/informers/networking/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
-	corelisters "k8s.io/client-go/listers/core/v1"
+	corelisters "k8s.io/client-go/listers/networking/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
@@ -34,15 +34,15 @@ import (
 )
 
 const (
-	controllerForMizarPod = "mizar_pod"
+	controllerForMizarNetworkPolicy = "mizar_policies"
 )
 
-// MizarPodController points to current controller
-type MizarPodController struct {
+// MizarNetworkPolicyController points to current controller
+type MizarNetworkPolicyController struct {
 	kubeClient clientset.Interface
 
-	// A store of objects, populated by the shared informer passed to MizarPodController
-	lister corelisters.PodLister
+	// A store of objects, populated by the shared informer passed to MizarNetworkPolicyController
+	lister corelisters.NetworkPolicyLister
 	// listerSynced returns true if the store has been synced at least once.
 	// Added as a member to the struct to allow injection for testing.
 	listerSynced cache.InformerSynced
@@ -58,17 +58,17 @@ type MizarPodController struct {
 	grpcAdaptor IGrpcAdaptor
 }
 
-// NewMizarPodController creates and configures a new controller instance
-func NewMizarPodController(informer coreinformers.PodInformer, kubeClient clientset.Interface, grpcHost string, grpcAdaptor IGrpcAdaptor) *MizarPodController {
+// NewMizarNetworkPolicyController creates and configures a new controller instance
+func NewMizarNetworkPolicyController(informer coreinformers.NetworkPolicyInformer, kubeClient clientset.Interface, grpcHost string, grpcAdaptor IGrpcAdaptor) *MizarNetworkPolicyController {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: kubeClient.CoreV1().EventsWithMultiTenancy(metav1.NamespaceAll, metav1.TenantAll)})
 
-	c := &MizarPodController{
+	c := &MizarNetworkPolicyController{
 		kubeClient:   kubeClient,
 		lister:       informer.Lister(),
 		listerSynced: informer.Informer().HasSynced,
-		queue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), controllerForMizarPod),
+		queue:        workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), controllerForMizarNetworkPolicy),
 		grpcHost:     grpcHost,
 		grpcAdaptor:  grpcAdaptor,
 	}
@@ -87,14 +87,14 @@ func NewMizarPodController(informer coreinformers.PodInformer, kubeClient client
 }
 
 // Run begins watching and handling.
-func (c *MizarPodController) Run(workers int, stopCh <-chan struct{}) {
+func (c *MizarNetworkPolicyController) Run(workers int, stopCh <-chan struct{}) {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 
-	klog.Infof("Starting %v controller", controllerForMizarPod)
-	defer klog.Infof("Shutting down %v controller", controllerForMizarPod)
+	klog.Infof("Starting %v controller", controllerForMizarNetworkPolicy)
+	defer klog.Infof("Shutting down %v controller", controllerForMizarNetworkPolicy)
 
-	if !controller.WaitForCacheSync(controllerForMizarPod, stopCh, c.listerSynced) {
+	if !controller.WaitForCacheSync(controllerForMizarNetworkPolicy, stopCh, c.listerSynced) {
 		return
 	}
 
@@ -105,15 +105,15 @@ func (c *MizarPodController) Run(workers int, stopCh <-chan struct{}) {
 	<-stopCh
 }
 
-func (c *MizarPodController) createObj(obj interface{}) {
+func (c *MizarNetworkPolicyController) createObj(obj interface{}) {
 	key, _ := controller.KeyFunc(obj)
 	c.queue.Add(KeyWithEventType{Key: key, EventType: EventType_Create})
 }
 
 // When an object is updated.
-func (c *MizarPodController) updateObj(old, cur interface{}) {
-	curObj := cur.(*v1.Pod)
-	oldObj := old.(*v1.Pod)
+func (c *MizarNetworkPolicyController) updateObj(old, cur interface{}) {
+	curObj := cur.(*v1.NetworkPolicy)
+	oldObj := old.(*v1.NetworkPolicy)
 	klog.Infof("curObj resource version", curObj.ResourceVersion)
 	klog.Infof("oldObj resource version", oldObj.ResourceVersion)
 	if curObj.ResourceVersion == oldObj.ResourceVersion {
@@ -130,20 +130,20 @@ func (c *MizarPodController) updateObj(old, cur interface{}) {
 	c.queue.Add(KeyWithEventType{Key: key, EventType: EventType_Update, ResourceVersion: curObj.ResourceVersion})
 }
 
-func (c *MizarPodController) deleteObj(obj interface{}) {
+func (c *MizarNetworkPolicyController) deleteObj(obj interface{}) {
 	key, _ := controller.KeyFunc(obj)
-	klog.Infof("%v deleted. key %s.", controllerForMizarPod, key)
+	klog.Infof("%v deleted. key %s.", controllerForMizarNetworkPolicy, key)
 	c.queue.Add(KeyWithEventType{Key: key, EventType: EventType_Delete})
 }
 
 // worker runs a worker thread that just dequeues items, processes them, and marks them done.
 // It enforces that the handler is never invoked concurrently with the same key.
-func (c *MizarPodController) worker() {
+func (c *MizarNetworkPolicyController) worker() {
 	for c.processNextWorkItem() {
 	}
 }
 
-func (c *MizarPodController) processNextWorkItem() bool {
+func (c *MizarNetworkPolicyController) processNextWorkItem() bool {
 	workItem, quit := c.queue.Get()
 
 	if quit {
@@ -160,20 +160,20 @@ func (c *MizarPodController) processNextWorkItem() bool {
 		return true
 	}
 
-	utilruntime.HandleError(fmt.Errorf("Handle %v of key %v failed with %v", controllerForMizarPod, key, err))
+	utilruntime.HandleError(fmt.Errorf("Handle %v of key %v failed with %v", controllerForMizarNetworkPolicy, key, err))
 	c.queue.AddRateLimited(keyWithEventType)
 
 	return true
 }
 
-func (c *MizarPodController) handle(keyWithEventType KeyWithEventType) error {
+func (c *MizarNetworkPolicyController) handle(keyWithEventType KeyWithEventType) error {
 	key := keyWithEventType.Key
 	eventType := keyWithEventType.EventType
-	klog.Infof("Entering handling for %v. key %s, eventType %s", controllerForMizarPod, key, eventType)
+	klog.Infof("Entering handling for %v. key %s, eventType %s", controllerForMizarNetworkPolicy, key, eventType)
 
 	startTime := time.Now()
 	defer func() {
-		klog.V(4).Infof("Finished handling %v %q (%v)", controllerForMizarPod, key, time.Since(startTime))
+		klog.V(4).Infof("Finished handling %v %q (%v)", controllerForMizarNetworkPolicy, key, time.Since(startTime))
 	}()
 
 	tenant, namespace, name, err := cache.SplitMetaTenantNamespaceKey(key)
@@ -181,10 +181,10 @@ func (c *MizarPodController) handle(keyWithEventType KeyWithEventType) error {
 		return err
 	}
 
-	obj, err := c.lister.PodsWithMultiTenancy(namespace, tenant).Get(name)
+	obj, err := c.lister.NetworkPoliciesWithMultiTenancy(namespace, tenant).Get(name)
 	if err != nil {
 		if eventType == EventType_Delete && errors.IsNotFound(err) {
-			obj = &v1.Pod{
+			obj = &v1.NetworkPolicy{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
 					Namespace: namespace,
@@ -196,15 +196,15 @@ func (c *MizarPodController) handle(keyWithEventType KeyWithEventType) error {
 		}
 	}
 
-	klog.V(4).Infof("Handling %v %s/%s/%s for event %v", controllerForMizarPod, tenant, namespace, name, eventType)
+	klog.V(4).Infof("Handling %v %s/%s/%s for event %v", controllerForMizarNetworkPolicy, tenant, namespace, name, eventType)
 
 	switch eventType {
 	case EventType_Create:
-		processPodGrpcReturnCode(c, c.grpcAdaptor.CreatePod(c.grpcHost, obj), keyWithEventType)
+		processNetworkPolicyGrpcReturnCode(c, c.grpcAdaptor.CreateNetworkPolicy(c.grpcHost, obj), keyWithEventType)
 	case EventType_Update:
-		processPodGrpcReturnCode(c, c.grpcAdaptor.UpdatePod(c.grpcHost, obj), keyWithEventType)
+		processNetworkPolicyGrpcReturnCode(c, c.grpcAdaptor.UpdateNetworkPolicy(c.grpcHost, obj), keyWithEventType)
 	case EventType_Delete:
-		processPodGrpcReturnCode(c, c.grpcAdaptor.DeletePod(c.grpcHost, obj), keyWithEventType)
+		processNetworkPolicyGrpcReturnCode(c, c.grpcAdaptor.DeleteNetworkPolicy(c.grpcHost, obj), keyWithEventType)
 	default:
 		panic(fmt.Sprintf("unimplemented for eventType %v", eventType))
 	}
@@ -212,17 +212,17 @@ func (c *MizarPodController) handle(keyWithEventType KeyWithEventType) error {
 	return nil
 }
 
-func processPodGrpcReturnCode(c *MizarPodController, returnCode *ReturnCode, keyWithEventType KeyWithEventType) {
+func processNetworkPolicyGrpcReturnCode(c *MizarNetworkPolicyController, returnCode *ReturnCode, keyWithEventType KeyWithEventType) {
 	key := keyWithEventType.Key
 	eventType := keyWithEventType.EventType
 	switch returnCode.Code {
 	case CodeType_OK:
-		klog.Infof("Mizar handled request successfully for %v. key %s, eventType %v", controllerForMizarPod, key, eventType)
+		klog.Infof("Mizar handled request successfully for %v. key %s, eventType %v", controllerForMizarNetworkPolicy, key, eventType)
 	case CodeType_TEMP_ERROR:
-		klog.Warningf("Mizar hit temporary error for %v. key %s. %s, eventType %v", controllerForMizarPod, key, returnCode.Message, eventType)
+		klog.Warningf("Mizar hit temporary error for %v. key %s. %s, eventType %v", controllerForMizarNetworkPolicy, key, returnCode.Message, eventType)
 		c.queue.AddRateLimited(keyWithEventType)
 	case CodeType_PERM_ERROR:
-		klog.Errorf("Mizar hit permanent error for %v. key %s. %s, eventType %v", controllerForMizarPod, key, returnCode.Message, eventType)
+		klog.Errorf("Mizar hit permanent error for %v. key %s. %s, eventType %v", controllerForMizarNetworkPolicy, key, returnCode.Message, eventType)
 	default:
 		klog.Errorf("unimplemented for CodeType %v", returnCode.Code)
 	}

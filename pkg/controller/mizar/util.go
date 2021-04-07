@@ -19,6 +19,7 @@ import (
 	"k8s.io/klog"
 
 	v1 "k8s.io/api/core/v1"
+	networking "k8s.io/api/networking/v1"
 )
 
 type EventType string
@@ -112,3 +113,120 @@ func ConvertToNodeContract(node *v1.Node) *BuiltinsNodeMessage {
 		Ip:   ip,
 	}
 }
+
+func ConvertToNetworkPolicyContract(policy *networking.NetworkPolicy) *BuiltinsNetworkPolicyMessage {
+	klog.Infof("NetworkPolicy Name: %s, Tenant: %s",
+			policy.Name, policy.Tenant)
+
+	//describeNetworkPolicySpec(policy.Spec, w)
+	return &BuiltinsNetworkPolicyMessage{
+		Name:          policy.Name,
+		Tenant:        policy.Tenant,
+	//	Spec:          string(policy.Spec),
+	}
+}
+
+/*
+func describeNetworkPolicySpec(nps networkingv1.NetworkPolicySpec, w PrefixWriter) {
+	w.Write(LEVEL_0, "Spec:\n")
+	w.Write(LEVEL_1, "PodSelector: ")
+	if len(nps.PodSelector.MatchLabels) == 0 && len(nps.PodSelector.MatchExpressions) == 0 {
+		w.Write(LEVEL_2, "<none> (Allowing the specific traffic to all pods in this namespace)\n")
+	} else {
+		w.Write(LEVEL_2, "%s\n", metav1.FormatLabelSelector(&nps.PodSelector))
+	}
+	w.Write(LEVEL_1, "Allowing ingress traffic:\n")
+	printNetworkPolicySpecIngressFrom(nps.Ingress, "    ", w)
+	w.Write(LEVEL_1, "Allowing egress traffic:\n")
+	printNetworkPolicySpecEgressTo(nps.Egress, "    ", w)
+	w.Write(LEVEL_1, "Policy Types: %v\n", policyTypesToString(nps.PolicyTypes))
+}
+
+func printNetworkPolicySpecIngressFrom(npirs []networkingv1.NetworkPolicyIngressRule, initialIndent string, w PrefixWriter) {
+	if len(npirs) == 0 {
+		w.Write(LEVEL_0, "%s%s\n", initialIndent, "<none> (Selected pods are isolated for ingress connectivity)")
+		return
+	}
+	for i, npir := range npirs {
+		if len(npir.Ports) == 0 {
+			w.Write(LEVEL_0, "%s%s\n", initialIndent, "To Port: <any> (traffic allowed to all ports)")
+		} else {
+			for _, port := range npir.Ports {
+				var proto corev1.Protocol
+				if port.Protocol != nil {
+					proto = *port.Protocol
+				} else {
+					proto = corev1.ProtocolTCP
+				}
+				w.Write(LEVEL_0, "%s%s: %s/%s\n", initialIndent, "To Port", port.Port, proto)
+			}
+		}
+		if len(npir.From) == 0 {
+			w.Write(LEVEL_0, "%s%s\n", initialIndent, "From: <any> (traffic not restricted by source)")
+		} else {
+			for _, from := range npir.From {
+				w.Write(LEVEL_0, "%s%s\n", initialIndent, "From:")
+				if from.PodSelector != nil && from.NamespaceSelector != nil {
+					w.Write(LEVEL_1, "%s%s: %s\n", initialIndent, "NamespaceSelector", metav1.FormatLabelSelector(from.NamespaceSelector))
+					w.Write(LEVEL_1, "%s%s: %s\n", initialIndent, "PodSelector", metav1.FormatLabelSelector(from.PodSelector))
+				} else if from.PodSelector != nil {
+					w.Write(LEVEL_1, "%s%s: %s\n", initialIndent, "PodSelector", metav1.FormatLabelSelector(from.PodSelector))
+				} else if from.NamespaceSelector != nil {
+					w.Write(LEVEL_1, "%s%s: %s\n", initialIndent, "NamespaceSelector", metav1.FormatLabelSelector(from.NamespaceSelector))
+				} else if from.IPBlock != nil {
+					w.Write(LEVEL_1, "%sIPBlock:\n", initialIndent)
+					w.Write(LEVEL_2, "%sCIDR: %s\n", initialIndent, from.IPBlock.CIDR)
+					w.Write(LEVEL_2, "%sExcept: %v\n", initialIndent, strings.Join(from.IPBlock.Except, ", "))
+				}
+			}
+		}
+		if i != len(npirs)-1 {
+			w.Write(LEVEL_0, "%s%s\n", initialIndent, "----------")
+		}
+	}
+}
+
+func printNetworkPolicySpecEgressTo(npers []networkingv1.NetworkPolicyEgressRule, initialIndent string, w PrefixWriter) {
+	if len(npers) == 0 {
+		w.Write(LEVEL_0, "%s%s\n", initialIndent, "<none> (Selected pods are isolated for egress connectivity)")
+		return
+	}
+	for i, nper := range npers {
+		if len(nper.Ports) == 0 {
+			w.Write(LEVEL_0, "%s%s\n", initialIndent, "To Port: <any> (traffic allowed to all ports)")
+		} else {
+			for _, port := range nper.Ports {
+				var proto corev1.Protocol
+				if port.Protocol != nil {
+					proto = *port.Protocol
+				} else {
+					proto = corev1.ProtocolTCP
+				}
+				w.Write(LEVEL_0, "%s%s: %s/%s\n", initialIndent, "To Port", port.Port, proto)
+			}
+		}
+		if len(nper.To) == 0 {
+			w.Write(LEVEL_0, "%s%s\n", initialIndent, "To: <any> (traffic not restricted by source)")
+		} else {
+			for _, to := range nper.To {
+				w.Write(LEVEL_0, "%s%s\n", initialIndent, "To:")
+				if to.PodSelector != nil && to.NamespaceSelector != nil {
+					w.Write(LEVEL_1, "%s%s: %s\n", initialIndent, "NamespaceSelector", metav1.FormatLabelSelector(to.NamespaceSelector))
+					w.Write(LEVEL_1, "%s%s: %s\n", initialIndent, "PodSelector", metav1.FormatLabelSelector(to.PodSelector))
+				} else if to.PodSelector != nil {
+					w.Write(LEVEL_1, "%s%s: %s\n", initialIndent, "PodSelector", metav1.FormatLabelSelector(to.PodSelector))
+				} else if to.NamespaceSelector != nil {
+					w.Write(LEVEL_1, "%s%s: %s\n", initialIndent, "NamespaceSelector", metav1.FormatLabelSelector(to.NamespaceSelector))
+				} else if to.IPBlock != nil {
+					w.Write(LEVEL_1, "%sIPBlock:\n", initialIndent)
+					w.Write(LEVEL_2, "%sCIDR: %s\n", initialIndent, to.IPBlock.CIDR)
+					w.Write(LEVEL_2, "%sExcept: %v\n", initialIndent, strings.Join(to.IPBlock.Except, ", "))
+				}
+			}
+		}
+		if i != len(npers)-1 {
+			w.Write(LEVEL_0, "%s%s\n", initialIndent, "----------")
+		}
+	}
+}
+*/
