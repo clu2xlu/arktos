@@ -13,6 +13,7 @@ go_library(
         "mizar-node-controller.go",
         "mizar-pod-controller.go",
         "mizar-service-controller.go",
+        "mizar-network-policy-controller.go",
         "mizar-starter-controller.go",
         "testutil.go",
         "util.go",

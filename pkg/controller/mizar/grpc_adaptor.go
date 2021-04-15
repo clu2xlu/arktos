@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"time"
 
+	"k8s.io/klog"
 	"google.golang.org/grpc"
 	v1 "k8s.io/api/core/v1"
 	networking "k8s.io/api/networking/v1"

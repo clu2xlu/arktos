@@ -121,6 +121,7 @@ func ConvertToNetworkPolicyContract(policy *networking.NetworkPolicy) *BuiltinsN
 	//describeNetworkPolicySpec(policy.Spec, w)
 	return &BuiltinsNetworkPolicyMessage{
 		Name:          policy.Name,
+		Namespace:     policy.Namespace,
 		Tenant:        policy.Tenant,
 	//	Spec:          string(policy.Spec),
 	}
