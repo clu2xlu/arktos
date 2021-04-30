@@ -114,6 +114,7 @@ func (c *MizarPodController) createObj(obj interface{}) {
 func (c *MizarPodController) updateObj(old, cur interface{}) {
 	curObj := cur.(*v1.Pod)
 	oldObj := old.(*v1.Pod)
+
 	if curObj.ResourceVersion == oldObj.ResourceVersion {
 		// Periodic resync will send update events for all known objects.
 		// Two different versions of the same object will always have different RVs.

@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"k8s.io/klog"
+	"k8s.io/apimachinery/pkg/util/intstr"
 
 	v1 "k8s.io/api/core/v1"
 	networking "k8s.io/api/networking/v1"
@@ -116,7 +117,11 @@ func ConvertToNodeContract(node *v1.Node) *BuiltinsNodeMessage {
 
 func ConvertToNetworkPolicyContract(policy *networking.NetworkPolicy) *BuiltinsNetworkPolicyMessage {
 	klog.Infof("NetworkPolicy Name: %s, Namespace: %s, Tenant: %s",
-			policy.Name, polic.Namespace, policy.Tenant)
+			policy.Name, policy.Namespace, policy.Tenant)
+	jsonString, _ := json.Marshal(policy.Spec.PodSelector.MatchLabels)
+	klog.Infof("PodSelector %s", jsonStringNetworkPolicySpecIngressFrom(policy.Spec.Ingress))
+	klog.Infof("Ingress %s", policy.Spec.Ingress)
+	klog.Info("Egress %s", policy.Spec.Egress)
 
 	return &BuiltinsNetworkPolicyMessage{
 		Name:          policy.Name,
@@ -124,3 +129,40 @@ func ConvertToNetworkPolicyContract(policy *networking.NetworkPolicy) *BuiltinsN
 		Tenant:        policy.Tenant,
 	}
 }
+
+func jsonStringNetworkPolicySpecIngressFrom(npirs []networking.NetworkPolicyIngressRule) string{
+	type PortSelector struct {
+		Protocol string
+		Port string
+	}
+	ingress := []string{}
+	inPorts := []PortSelector{}
+	froms := []string{}
+	
+	for _, npir := range npirs {
+	        for _, port := range npir.Ports {
+	                var proto v1.Protocol
+	                var portNum string
+	                if port.Protocol != nil {
+	                        proto = *port.Protocol
+	                } else {
+	                        proto = v1.ProtocolTCP
+	                }
+	                if port.Port.Type == intstr.Int {
+	                        portNum = strconv.Itoa(int(port.Port.IntVal))
+	                } else {
+	                        portNum = port.Port.StrVal
+	                }
+	                sel := PortSelector{
+	                        Protocol: string(proto),
+	                        Port: portNum,
+	                }
+	                selJson, _ := json.Marshal(sel)
+			klog.Info("PortSelector %s", string(selJson))
+			inPorts.append(inPorts, sel)
+		}
+	}
+	p, _ := json.Marshal(inPorts)
+	return string(p)
+}
+

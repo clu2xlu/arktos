@@ -197,6 +197,7 @@ func (c *MizarNetworkPolicyController) handle(keyWithEventType KeyWithEventType)
 	}
 
 	klog.V(4).Infof("Handling %v %s/%s/%s for event %v", controllerForMizarNetworkPolicy, tenant, namespace, name, eventType)
+	klog.Infof("Mizar-network-policy-controller - get policy: %#v.", obj)
 
 	switch eventType {
 	case EventType_Create:
