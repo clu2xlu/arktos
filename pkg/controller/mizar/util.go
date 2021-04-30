@@ -151,13 +151,12 @@ func jsonStringNetworkPolicySpecIngressFrom(npirs []networking.NetworkPolicyIngr
 		Cidr string
 		Except []string
 	}
-	type IngressRule struct {
-		Ports string
-		From string
-	}
-
 	ingressPorts := []*PortSelector{}
 	froms := []string{}
+	type IngressRule struct {
+		Ports []*PortSelector
+		From []string
+	}
 	rules := []string{}
 	
 	for _, npir := range npirs {
@@ -231,16 +230,15 @@ func jsonStringNetworkPolicySpecIngressFrom(npirs []networking.NetworkPolicyIngr
 				ipJson, _ := json.Marshal(ipblock)
 				froms = append(froms, string(ipJson))
 			}
+			rule := IngressRule{
+				Ports: ingressPorts,
+				From: froms,
+			}
+			ruleJson, _ := json.Marshal(rule)
+			klog.Infof("ruleJson %s", string(ruleJson))
+			rules = append(rules, string(ruleJson))
 		}
-		fromsJson, _ := json.Marshal(froms)
 		klog.Infof("Froms Json %s", froms)
-
-		rule := &IngressRule{
-			Ports: string(portsJson),
-			From: string(fromsJson),
-		}
-		ruleJson, _ := json.Marshal(rule)
-		rules = append(rules, string(ruleJson))
 	}
 	rulesJson, _ := json.Marshal(rules)
 	return string(rulesJson)
