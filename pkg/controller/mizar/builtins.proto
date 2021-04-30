@@ -90,6 +90,23 @@ message InterfacesMessage {
   string subnet = 3;
 }
 
+message IngressMessage {
+  string ports = 1;
+  string from = 2;
+}
+
+message EgressMessage {
+  string ports = 1;
+  string to = 2;
+}
+
+message PolicyRuleMessage {
+  string pod_selector = 1; 
+  string ingress = 2; 
+  string egress = 3; 
+  string policy_types = 4; 
+}
+
 message ReturnCode {
   CodeType code = 1;
   string message = 2;
