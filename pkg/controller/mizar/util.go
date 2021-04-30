@@ -135,11 +135,17 @@ func jsonStringNetworkPolicySpecIngressFrom(npirs []networking.NetworkPolicyIngr
 		Protocol string
 		Port string
 	}
-	type PodSelectorMessage struct {
-		MatchLabels string
+	type PodSelector struct {
+		MatchLabels map[string]string
 	}
-	type NamespaceSelectorMessage struct {
-		MatchLabels string
+	type PodSelectorMsg struct {
+		P PodSelector `json:"PodSelector"`
+	}
+	type NamespaceSelector struct {
+		MatchLabels map[string]string
+	}
+	type NamespaceSelectorMsg struct {
+		N NamespaceSelector `json:"NamespaceSelector"`
 	}
 	type IPBlock struct {
 		Cidr string
@@ -174,33 +180,48 @@ func jsonStringNetworkPolicySpecIngressFrom(npirs []networking.NetworkPolicyIngr
 	                }
 			ingressPorts = append(ingressPorts, sel)
 		}
+		portsJson, _ := json.Marshal(ingressPorts)
+		klog.Infof("Ports Json %s", string(portsJson))
+
 		for _, from := range npir.From {
 			if from.PodSelector != nil && from.NamespaceSelector != nil {
-				podSel, _ := json.Marshal(from.PodSelector.MatchLabels)
-				namespaceSel, _ := json.Marshal(from.NamespaceSelector.MatchLabels)
-				podMsg := &PodSelectorMessage{
-					MatchLabels: string(podSel),
+				podMsg := PodSelector{
+					MatchLabels: from.PodSelector.MatchLabels,
 				}
-				namespaceMsg := &NamespaceSelectorMessage{
-					MatchLabels: string(namespaceSel),
+				namespaceMsg := NamespaceSelector{
+					MatchLabels: from.NamespaceSelector.MatchLabels,
 				}
-				podJson, _ := json.Marshal(podMsg)
-				namespaceJson, _ := json.Marshal(namespaceMsg)
+				pMsg := PodSelectorMsg{
+					P: podMsg,
+				}
+				nMsg := NamespaceSelectorMsg{
+					N: namespaceMsg,
+				}
+				podJson, _ := json.Marshal(pMsg)
+				namespaceJson, _ := json.Marshal(nMsg)
+				klog.Infof("pod1 Json %s", string(podJson))
+
 				froms = append(froms, string(podJson))
 				froms = append(froms, string(namespaceJson))
 			} else if from.PodSelector != nil {
-				podSel, _ := json.Marshal(from.PodSelector.MatchLabels)
-				podMsg := &PodSelectorMessage{
-					MatchLabels: string(podSel),
+				podMsg := PodSelector{
+					MatchLabels: from.PodSelector.MatchLabels,
 				}
-				podJson, _ := json.Marshal(podMsg)
+				pMsg := PodSelectorMsg{
+					P: podMsg,
+				}
+				podJson, _ := json.Marshal(pMsg)
+				klog.Infof("pod2 Json %s", string(podJson))
+
 				froms = append(froms, string(podJson))
 			} else if from.NamespaceSelector != nil {
-				namespaceSel, _ := json.Marshal(from.NamespaceSelector.MatchLabels)
-				namespaceMsg := &NamespaceSelectorMessage{
-					MatchLabels: string(namespaceSel),
+				namespaceMsg := NamespaceSelector{
+					MatchLabels: from.NamespaceSelector.MatchLabels,
 				}
-				namespaceJson, _ := json.Marshal(namespaceMsg)
+				nMsg := NamespaceSelectorMsg{
+					N: namespaceMsg,
+				}
+				namespaceJson, _ := json.Marshal(nMsg)
 				froms = append(froms, string(namespaceJson))
 			} else if from.IPBlock != nil {
 				ipblock := &IPBlock{
@@ -211,8 +232,8 @@ func jsonStringNetworkPolicySpecIngressFrom(npirs []networking.NetworkPolicyIngr
 				froms = append(froms, string(ipJson))
 			}
 		}
-		portsJson, _ := json.Marshal(ingressPorts)
 		fromsJson, _ := json.Marshal(froms)
+		klog.Infof("Froms Json %s", froms)
 
 		rule := &IngressRule{
 			Ports: string(portsJson),
