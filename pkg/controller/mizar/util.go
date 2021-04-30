@@ -135,9 +135,24 @@ func jsonStringNetworkPolicySpecIngressFrom(npirs []networking.NetworkPolicyIngr
 		Protocol string
 		Port string
 	}
-	//ingress := []string{}
+	type PodSelectorMessage struct {
+		MatchLabels string
+	}
+	type NamespaceSelectorMessage struct {
+		MatchLabels string
+	}
+	type IPBlock struct {
+		Cidr string
+		Except []string
+	}
+	type IngressRule struct {
+		Ports string
+		From string
+	}
+
 	ingressPorts := []*PortSelector{}
-	//froms := []string{}
+	froms := []string{}
+	rules := []string{}
 	
 	for _, npir := range npirs {
 	        for _, port := range npir.Ports {
@@ -158,10 +173,55 @@ func jsonStringNetworkPolicySpecIngressFrom(npirs []networking.NetworkPolicyIngr
 	                        Port: portNum,
 	                }
 			ingressPorts = append(ingressPorts, sel)
-	                selJson, _ := json.Marshal(sel)
 		}
+		for _, from := range npir.From {
+			if from.PodSelector != nil && from.NamespaceSelector != nil {
+				podSel, _ := json.Marshal(from.PodSelector.MatchLabels)
+				namespaceSel, _ := json.Marshal(from.NamespaceSelector.MatchLabels)
+				podMsg := &PodSelectorMessage{
+					MatchLabels: string(podSel),
+				}
+				namespaceMsg := &NamespaceSelectorMessage{
+					MatchLabels: string(namespaceSel),
+				}
+				podJson, _ := json.Marshal(podMsg)
+				namespaceJson, _ := json.Marshal(namespaceMsg)
+				froms = append(froms, string(podJson))
+				froms = append(froms, string(namespaceJson))
+			} else if from.PodSelector != nil {
+				podSel, _ := json.Marshal(from.PodSelector.MatchLabels)
+				podMsg := &PodSelectorMessage{
+					MatchLabels: string(podSel),
+				}
+				podJson, _ := json.Marshal(podMsg)
+				froms = append(froms, string(podJson))
+			} else if from.NamespaceSelector != nil {
+				namespaceSel, _ := json.Marshal(from.NamespaceSelector.MatchLabels)
+				namespaceMsg := &NamespaceSelectorMessage{
+					MatchLabels: string(namespaceSel),
+				}
+				namespaceJson, _ := json.Marshal(namespaceMsg)
+				froms = append(froms, string(namespaceJson))
+			} else if from.IPBlock != nil {
+				ipblock := &IPBlock{
+					Cidr: from.IPBlock.CIDR,
+					Except: from.IPBlock.Except,
+				}
+				ipJson, _ := json.Marshal(ipblock)
+				froms = append(froms, string(ipJson))
+			}
+		}
+		portsJson, _ := json.Marshal(ingressPorts)
+		fromsJson, _ := json.Marshal(froms)
+
+		rule := &IngressRule{
+			Ports: string(portsJson),
+			From: string(fromsJson),
+		}
+		ruleJson, _ := json.Marshal(rule)
+		rules = append(rules, string(ruleJson))
 	}
-	portsJson, _ := json.Marshal(ingressPorts)
-	return string(portsJson)
+	rulesJson, _ := json.Marshal(rules)
+	return string(rulesJson)
 }
 
