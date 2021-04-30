@@ -119,8 +119,8 @@ func ConvertToNetworkPolicyContract(policy *networking.NetworkPolicy) *BuiltinsN
 	klog.Infof("NetworkPolicy Name: %s, Namespace: %s, Tenant: %s",
 			policy.Name, policy.Namespace, policy.Tenant)
 	jsonString, _ := json.Marshal(policy.Spec.PodSelector.MatchLabels)
-	klog.Infof("PodSelector %s", jsonStringNetworkPolicySpecIngressFrom(policy.Spec.Ingress))
-	klog.Infof("Ingress %s", policy.Spec.Ingress)
+	klog.Infof("PodSelector %s", jsonString)
+	klog.Infof("Ingress %s", jsonStringNetworkPolicySpecIngressFrom(policy.Spec.Ingress))
 	klog.Info("Egress %s", policy.Spec.Egress)
 
 	return &BuiltinsNetworkPolicyMessage{
@@ -135,9 +135,9 @@ func jsonStringNetworkPolicySpecIngressFrom(npirs []networking.NetworkPolicyIngr
 		Protocol string
 		Port string
 	}
-	ingress := []string{}
-	inPorts := []PortSelector{}
-	froms := []string{}
+	//ingress := []string{}
+	ingressPorts := []*PortSelector{}
+	//froms := []string{}
 	
 	for _, npir := range npirs {
 	        for _, port := range npir.Ports {
@@ -153,16 +153,15 @@ func jsonStringNetworkPolicySpecIngressFrom(npirs []networking.NetworkPolicyIngr
 	                } else {
 	                        portNum = port.Port.StrVal
 	                }
-	                sel := PortSelector{
+	                sel := &PortSelector{
 	                        Protocol: string(proto),
 	                        Port: portNum,
 	                }
+			ingressPorts = append(ingressPorts, sel)
 	                selJson, _ := json.Marshal(sel)
-			klog.Info("PortSelector %s", string(selJson))
-			inPorts.append(inPorts, sel)
 		}
 	}
-	p, _ := json.Marshal(inPorts)
-	return string(p)
+	portsJson, _ := json.Marshal(ingressPorts)
+	return string(portsJson)
 }
 
