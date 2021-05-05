@@ -16,7 +16,6 @@ package mizar
 import (
 	"encoding/json"
 	"strconv"
-	"strings"
 	"k8s.io/klog"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
@@ -41,6 +40,47 @@ type KeyWithEventType struct {
 	EventType       EventType
 	Key             string
 	ResourceVersion string
+}
+
+type PortSelector struct {
+	Protocol string `json:"protocol"`
+	Port string `json:"port"`
+}
+
+type PodSelector struct {
+	MatchLabels map[string]string `json:"matchLabels,omitempty"`
+}
+
+type NamespaceSelector struct {
+	MatchLabels map[string]string `json:"matchLabels,omitempty"`
+}
+
+type IPBlock struct {
+	Cidr string `json:"cidr,omitempty"`
+	Except []string `json:"except,omitempty"`
+}
+
+type Allowed struct {
+	P PodSelector `json:"podSelector,omitempty"`
+	N NamespaceSelector `json:"namespaceSelector,omitempty"`
+	I IPBlock `json:"ipBlock,omitempty"`
+}
+
+type IngressMsg struct {
+	Ports []PortSelector `json:"ports"`
+	ArrayRule []Allowed `json:"from"`
+}
+
+type EgressMsg struct {
+	Ports []PortSelector `json:"ports"`
+	ArrayRule []Allowed `json:"to"`
+}
+
+type PolicySpecMsg struct {
+	PodSel PodSelector `json:"podSelector,omitempty"`
+	In []IngressMsg `json:"ingress,omitempty"`
+	Out []EgressMsg `json:"egress,omitempty"`
+	Type []string `json:"policyTypes,omitempty"`
 }
 
 type StartHandler func(interface{}, string)
@@ -119,132 +159,203 @@ func ConvertToNodeContract(node *v1.Node) *BuiltinsNodeMessage {
 func ConvertToNetworkPolicyContract(policy *networking.NetworkPolicy) *BuiltinsNetworkPolicyMessage {
 	klog.Infof("NetworkPolicy Name: %s, Namespace: %s, Tenant: %s",
 			policy.Name, policy.Namespace, policy.Tenant)
-	jsonString, _ := json.Marshal(policy.Spec.PodSelector.MatchLabels)
-	klog.Infof("PodSelector %s", jsonString)
-	klog.Infof("Ingress %s", jsonStringNetworkPolicySpecIngressFrom(policy.Spec.Ingress))
-	klog.Info("Egress %s", policy.Spec.Egress)
+	policyJson, _ := json.Marshal(parseNetworkPolicySpecToMsg(policy.Spec))
+	klog.Infof("NetworkPolicy: %s", string(policyJson))
 
 	return &BuiltinsNetworkPolicyMessage{
 		Name:          policy.Name,
 		Namespace:     policy.Namespace,
 		Tenant:        policy.Tenant,
+		Policy:        string(policyJson),
 	}
 }
 
-type PortSelector struct {
-	Protocol string
-	Port string
+func parseNetworkPolicySpecToMsg(nps networking.NetworkPolicySpec) PolicySpecMsg {
+	ingressMsg := []IngressMsg{}
+	egressMsg := []EgressMsg{}
+	typeMsg := []string{}
+
+	podSelMsg := PodSelector {
+		MatchLabels: nps.PodSelector.MatchLabels,
+	}
+	ingressMsg = parseNetworkPolicyIngressRulesToMsg(nps.Ingress)
+	egressMsg = parseNetworkPolicyEgressRulesToMsg(nps.Egress)
+	typeMsg = policyTypesToStringArry(nps.PolicyTypes)
+
+	policyMsg := PolicySpecMsg {
+		PodSel: podSelMsg,
+		In: ingressMsg,
+		Out: egressMsg,
+		Type: typeMsg,
+	}
+
+	return policyMsg
 }
 
-type PodSelector struct {
-	MatchLabels map[string]string
+func policyTypesToStringArry(pts []networking.PolicyType) []string {
+	strPts := []string{}
+	if pts != nil {
+		for _, p := range pts {
+			strPts = append(strPts, string(p))
+		}
+	}
+	return strPts
 }
 
-type PodSelectorMsg struct {
-	P PodSelector `json:"PodSelector"`
-}
+func parseNetworkPolicyIngressRulesToMsg(npirs []networking.NetworkPolicyIngressRule) []IngressMsg {
+	ingressPorts := []PortSelector{}
+	froms := []Allowed{}
+	ingressRules := []IngressMsg{}
 
-type NamespaceSelector struct {
-	MatchLabels map[string]string
-}
-
-type NamespaceSelectorMsg struct {
-	N NamespaceSelector `json:"NamespaceSelector"`
-}
-
-type IPBlock struct {
-	Cidr string
-	Except []string
-}
-
-func jsonStringNetworkPolicySpecIngressFrom(npirs []networking.NetworkPolicyIngressRule) []*IngressMessage{}{
-	var portsMsg string
-	var fromsMsg string
-
-	ingressPorts := []*PortSelector{}
-	rules := []*IngressMessage{}
-	froms := []string{}
 	if len(npirs) == 0 {
 		return nil
 	}
+
 	for _, npir := range npirs {
 	        for _, port := range npir.Ports {
-	                var proto v1.Protocol
+	                var protocol v1.Protocol
 	                var portNum string
 	                if port.Protocol != nil {
-	                        proto = *port.Protocol
+	                        protocol = *port.Protocol
 	                } else {
-	                        proto = v1.ProtocolTCP
+	                        protocol = v1.ProtocolTCP
 	                }
 	                if port.Port.Type == intstr.Int {
 	                        portNum = strconv.Itoa(int(port.Port.IntVal))
 	                } else {
 	                        portNum = port.Port.StrVal
 	                }
-	                sel := &PortSelector{
-	                        Protocol: string(proto),
+	                sel := PortSelector{
+	                        Protocol: string(protocol),
 	                        Port: portNum,
 	                }
 			ingressPorts = append(ingressPorts, sel)
 		}
-		portsJson, _ := json.Marshal(ingressPorts)
-		portsMsg = string(portsJson)
 
 		for _, from := range npir.From {
 			if from.PodSelector != nil && from.NamespaceSelector != nil {
-				var msg string
 				podMsg := PodSelector{
 					MatchLabels: from.PodSelector.MatchLabels,
 				}
 				namespaceMsg := NamespaceSelector{
 					MatchLabels: from.NamespaceSelector.MatchLabels,
 				}
-				pMsg := PodSelectorMsg{
+				fromMsg := Allowed{
 					P: podMsg,
-				}
-				nMsg := NamespaceSelectorMsg{
 					N: namespaceMsg,
 				}
-				podJson, _ := json.Marshal(pMsg)
-				namespaceJson, _ := json.Marshal(nMsg)
-				msg = string(podJson) + "," + string(namespaceJson)
-				froms = append(froms, msg)
+				froms = append(froms, fromMsg)
 			} else if from.PodSelector != nil {
 				podMsg := PodSelector{
 					MatchLabels: from.PodSelector.MatchLabels,
 				}
-				pMsg := PodSelectorMsg{
+				fromMsg := Allowed{
 					P: podMsg,
 				}
-				podJson, _ := json.Marshal(pMsg)
-				froms = append(froms, string(podJson))
+				froms = append(froms, fromMsg)
 			} else if from.NamespaceSelector != nil {
 				namespaceMsg := NamespaceSelector{
 					MatchLabels: from.NamespaceSelector.MatchLabels,
 				}
-				nMsg := NamespaceSelectorMsg{
+				fromMsg := Allowed{
 					N: namespaceMsg,
 				}
-				namespaceJson, _ := json.Marshal(nMsg)
-				froms = append(froms, string(namespaceJson))
+				froms = append(froms, fromMsg)
 			} else if from.IPBlock != nil {
-				ipblock := &IPBlock{
+				ipblockMsg := IPBlock{
 					Cidr: from.IPBlock.CIDR,
 					Except: from.IPBlock.Except,
 				}
-				ipJson, _ := json.Marshal(ipblock)
-				froms = append(froms, string(ipJson))
+				fromMsg := Allowed{
+					I: ipblockMsg,
+				}
+				froms = append(froms, fromMsg)
 			}	
 		}
-		klog.Infof("Froms %s", froms)
-		fromsMsg = strings.Join(froms, ",")
-		fromsMsg = "[" + fromsMsg + "]"
-		ruleMsg := &IngressMessage{
-			Ports: portsMsg,
-			From: fromsMsg,
+		ingressMsg := IngressMsg{
+			Ports: ingressPorts,
+			ArrayRule: froms, 
 		}
-		rules = append(rules, ruleMsg)
+		ingressRules = append(ingressRules, ingressMsg)
 	}
-	return rules
+	return ingressRules
 }
 
+func parseNetworkPolicyEgressRulesToMsg(npers []networking.NetworkPolicyEgressRule) []EgressMsg {
+	egressPorts := []PortSelector{}
+	tos := []Allowed{}
+	egressRules := []EgressMsg{}
+
+	if len(npers) == 0 {
+		return nil
+	}
+
+	for _, nper := range npers {
+	        for _, port := range nper.Ports {
+	                var protocol v1.Protocol
+	                var portNum string
+	                if port.Protocol != nil {
+	                        protocol = *port.Protocol
+	                } else {
+	                        protocol = v1.ProtocolTCP
+	                }
+	                if port.Port.Type == intstr.Int {
+	                        portNum = strconv.Itoa(int(port.Port.IntVal))
+	                } else {
+	                        portNum = port.Port.StrVal
+	                }
+	                sel := PortSelector{
+	                        Protocol: string(protocol),
+	                        Port: portNum,
+	                }
+			egressPorts = append(egressPorts, sel)
+		}
+
+		for _, to := range nper.To {
+			if to.PodSelector != nil && to.NamespaceSelector != nil {
+				podMsg := PodSelector{
+					MatchLabels: to.PodSelector.MatchLabels,
+				}
+				namespaceMsg := NamespaceSelector{
+					MatchLabels: to.NamespaceSelector.MatchLabels,
+				}
+				toMsg := Allowed{
+					P: podMsg,
+					N: namespaceMsg,
+				}
+				tos = append(tos, toMsg)
+			} else if to.PodSelector != nil {
+				podMsg := PodSelector{
+					MatchLabels: to.PodSelector.MatchLabels,
+				}
+				toMsg := Allowed{
+					P: podMsg,
+				}
+				tos = append(tos, toMsg)
+			} else if to.NamespaceSelector != nil {
+				namespaceMsg := NamespaceSelector{
+					MatchLabels: to.NamespaceSelector.MatchLabels,
+				}
+				toMsg := Allowed{
+					N: namespaceMsg,
+				}
+				tos = append(tos, toMsg)
+			} else if to.IPBlock != nil {
+				ipblockMsg := IPBlock{
+					Cidr: to.IPBlock.CIDR,
+					Except: to.IPBlock.Except,
+				}
+				toMsg := Allowed{
+					I: ipblockMsg,
+				}
+				tos = append(tos, toMsg)
+			}	
+		}
+		egressMsg := EgressMsg{
+			Ports: egressPorts,
+			ArrayRule: tos, 
+		}
+		egressRules = append(egressRules, egressMsg)
+	}
+	return egressRules
+}

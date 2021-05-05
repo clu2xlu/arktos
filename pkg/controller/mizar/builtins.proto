@@ -76,6 +76,7 @@ message BuiltinsNetworkPolicyMessage {
   string name = 1;
   string namespace = 2;
   string tenant = 3;
+  string policy = 4;
 }
 
 message PortsMessage {
@@ -88,23 +89,6 @@ message InterfacesMessage {
   string name = 1;
   string ip = 2;
   string subnet = 3;
-}
-
-message IngressMessage {
-  string ports = 1;
-  string from = 2;
-}
-
-message EgressMessage {
-  string ports = 1;
-  string to = 2;
-}
-
-message PolicyRuleMessage {
-  string pod_selector = 1; 
-  string ingress = 2; 
-  string egress = 3; 
-  string policy_types = 4; 
 }
 
 message ReturnCode {
