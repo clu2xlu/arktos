@@ -22,6 +22,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	networking "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
@@ -196,6 +197,120 @@ func TestConvertToNodeContract(t *testing.T) {
 
 	// Act
 	actual = ConvertToNodeContract(node)
+
+	// Assert
+	testCheckEqual(t, expected, actual)
+}
+
+func TestConvertToNetworkPolicyContract(t *testing.T) {
+	nppolicy := &networking.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      testName,
+			Namespace: testNamespace,
+			Tenant:    testTenant,
+		},
+	}
+	spec := MizarNetworkPolicyPolicySpecMsg{}
+	expected := &BuiltinsServiceEndpointMessage{
+		Name:           testName,
+		Namespace:      testNamespace,
+		Tenant:         testTenant,
+	}
+
+	// Act
+	actual := ConvertToServiceEndpointContract(nppolicy)
+
+	// Assert
+	testCheckEqual(t, expected, actual)
+
+	// Arrange - with network policy spec
+	nppolicy.Spec = networking.NetworkPolicySpec{
+		PodSelector: metav1.LabelSelector{
+			MatchLabels: map[string]string{
+				"run": "pod0",
+			},
+		},
+		Ingress: []networking.NetworkPolicyIngressRule{
+			{
+				Ports: []networking.NetworkPolicyPort{
+					{Port: &port8000, Protocol: &protoTCP},
+					{Port: &port5976, Protocol: &protoTCP},
+				},
+				From: []networking.NetworkPolicyPeer{
+					{
+						PodSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"run":  "pod1",
+							},
+						},
+					},
+				},
+			},
+		},
+		Egress: []networking.NetworkPolicyEgressRule{
+			{
+				Ports: []networking.NetworkPolicyPort{
+					{Port: &port8000, Protocol: &protoTCP},
+				},
+				To: []networking.NetworkPolicyPeer{
+					{
+						PodSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"run":  "pod2",
+							},
+						},
+					},
+				},
+			},
+		},
+		PolicyTypes: []networking.PolicyType{networking.PolicyTypeIngress, networking.PolicyTypeEgress},
+	}
+	
+	output = {
+		podSelector:{
+			matchLabels:{
+				run:pod0
+			}
+		},
+		ingress:[{
+			ports:[{
+				protocol:TCP,
+				port:8000
+			},
+			{
+				protocol:TCP,
+				port:5976
+			}],
+		from:[{
+			podSelector:{
+				matchLabels:{
+					run:pod1
+				}},
+				namespaceSelector:{},
+				ipBlock:{}
+			}]
+		}],
+		egress:[{
+			ports:[{
+				protocol:TCP,
+				port:8000
+			}],
+			to:[{
+				podSelector:{
+					matchLabels:{
+						run:pod2
+					}
+				},
+				namespaceSelector:{},
+				ipBlock:{}
+			}]
+		}],
+		policyTypes:[Ingress,Egress]
+	}
+
+	expected.Policy = jsonMarshal(output)
+	// Act
+	actual = ConvertToServiceEndpointContract(nppolicy)
 
 	// Assert
 	testCheckEqual(t, expected, actual)
