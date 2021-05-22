@@ -174,7 +174,7 @@ func (c *MizarNamespaceController) handle(keyWithEventType KeyWithEventType) err
 		klog.V(4).Infof("Finished handling %v %q (%v)", controllerForMizarNamespace, key, time.Since(startTime))
 	}()
 
-	tenant, namespace, name, err := cache.SplitMetaTenantNamespaceKey(key)
+	tenant, name, err := cache.SplitMetaTenantKey(key)
 	if err != nil {
 		return err
 	}
@@ -184,9 +184,8 @@ func (c *MizarNamespaceController) handle(keyWithEventType KeyWithEventType) err
 		if eventType == EventType_Delete && errors.IsNotFound(err) {
 			obj = &v1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
-					Namespace: namespace,
-					Tenant:    tenant,
+					Name:   name,
+					Tenant: tenant,
 				},
 			}
 		} else {
@@ -194,7 +193,7 @@ func (c *MizarNamespaceController) handle(keyWithEventType KeyWithEventType) err
 		}
 	}
 
-	klog.V(4).Infof("Handling %v %s/%s/%s for event %v", controllerForMizarNamespace, tenant, namespace, name, eventType)
+	klog.V(4).Infof("Handling %v %s/%s for event %v", controllerForMizarNamespace, tenant, name, eventType)
 
 	switch eventType {
 	case EventType_Create:
